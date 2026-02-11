@@ -2,7 +2,7 @@
 
 A [Claude Code](https://docs.anthropic.com/en/docs/claude-code) status line plugin that displays your **Claude Pro subscription usage** directly in the CLI — session limits, weekly limits, and reset times, all at a glance.
 
-![Status line showing model, context window, 5-hour session usage, and 7-day weekly usage with colored progress bars](./screenshot.png)
+![Status line showing model, context window, 5-hour session usage, and 7-day weekly usage with colored progress bars](./status-line-demo.png)
 
 ```
 [Opus] │ Ctx ████░░░░░░ 42% │ 5h █░░░░░░░░░ 16% ~4h30m │ 7d █░░░░░░░░░ 14% ~2d23h
