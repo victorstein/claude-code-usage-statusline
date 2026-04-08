@@ -18,16 +18,29 @@ class ClaudeUsageStatusline < Formula
     bin.install "claude-usage-statusline.py" => "claude-usage-statusline"
   end
 
+  def post_install
+    require "json"
+
+    settings_path = Pathname.new(Dir.home) / ".claude" / "settings.json"
+    settings_path.parent.mkpath
+
+    settings = if settings_path.exist?
+      JSON.parse(settings_path.read) rescue {}
+    else
+      {}
+    end
+
+    settings["statusLine"] = {
+      "type"    => "command",
+      "command" => "claude-usage-statusline",
+    }
+
+    settings_path.write(JSON.pretty_generate(settings) + "\n")
+  end
+
   def caveats
     <<~EOS
-      To enable the status line, add to ~/.claude/settings.json:
-
-        {
-          "statusLine": {
-            "type": "command",
-            "command": "claude-usage-statusline"
-          }
-        }
+      Claude Code has been configured automatically (#{Dir.home}/.claude/settings.json).
 
       Make sure you are logged into claude.ai in Google Chrome before starting
       a Claude Code session — cookies are extracted automatically on first run.
