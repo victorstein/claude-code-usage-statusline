@@ -8,8 +8,8 @@ class ClaudeUsageStatusline < Formula
   # Stable install — update url + sha256 on each release:
   #   curl -L https://github.com/victorstein/claude-code-usage-statusline/archive/refs/tags/vX.Y.Z.tar.gz | shasum -a 256
   #
-  # url "https://github.com/victorstein/claude-code-usage-statusline/archive/refs/tags/v1.1.0.tar.gz"
-  # sha256 "<run the curl command above to get this>"
+  url "https://github.com/victorstein/claude-code-usage-statusline/archive/refs/tags/v0.0.1.tar.gz"
+  sha256 "a2fd4b01dd91cb77823aef99766cdfcc3bf3c505389c5dabbda37f3879d4c3e7"
 
   depends_on :macos
   depends_on "python@3"
