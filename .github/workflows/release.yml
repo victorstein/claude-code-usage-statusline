@@ -102,67 +102,59 @@ jobs:
 
           echo "sha256=${SHA256}" >> "$GITHUB_OUTPUT"
 
-      - name: Update Homebrew formula
-        run: |
-          python3 - <<'PYEOF'
-          import re, os, sys
-
-          tag     = os.environ["NEW_TAG"]
-          sha256  = os.environ["SHA256"]
-          repo    = os.environ["GITHUB_REPOSITORY"]
-          new_url = f"https://github.com/{repo}/archive/refs/tags/{tag}.tar.gz"
-          formula = "HomebrewFormula/claude-usage-statusline.rb"
-
-          with open(formula) as f:
-              content = f.read()
-
-          # State A — first release: commented url/sha256 lines
-          content, n_url_a = re.subn(
-              r'^(\s*)#\s*url\s+"https://github\.com/[^"]+/archive/refs/tags/[^"]+\.tar\.gz"',
-              rf'\1url "{new_url}"',
-              content, flags=re.MULTILINE
-          )
-          content, n_sha_a = re.subn(
-              r'^(\s*)#\s*sha256\s+"[^"]*"',
-              rf'\1sha256 "{sha256}"',
-              content, flags=re.MULTILINE
-          )
-
-          # State B — subsequent releases: active (uncommented) url/sha256 lines
-          content, n_url_b = re.subn(
-              r'^(\s*)url\s+"https://github\.com/[^"]+/archive/refs/tags/[^"]+\.tar\.gz"',
-              rf'\1url "{new_url}"',
-              content, flags=re.MULTILINE
-          )
-          content, n_sha_b = re.subn(
-              r'^(\s*)sha256\s+"[a-f0-9]{64}"',
-              rf'\1sha256 "{sha256}"',
-              content, flags=re.MULTILINE
-          )
-
-          if n_url_a + n_url_b == 0:
-              print("::error::No url line found in formula to update.", file=sys.stderr)
-              sys.exit(1)
-          if n_sha_a + n_sha_b == 0:
-              print("::error::No sha256 line found in formula to update.", file=sys.stderr)
-              sys.exit(1)
-
-          with open(formula, "w") as f:
-              f.write(content)
-
-          print(f"url  → {new_url}")
-          print(f"sha256 → {sha256}")
-          PYEOF
-        env:
-          NEW_TAG: ${{ steps.version.outputs.tag }}
-          SHA256: ${{ steps.sha256.outputs.sha256 }}
-
-      - name: Commit and push formula update
+      - name: Update Homebrew tap formula
         run: |
           TAG="${{ steps.version.outputs.tag }}"
-          git add HomebrewFormula/claude-usage-statusline.rb
-          git commit -m "chore: update Homebrew formula for ${TAG}"
-          git push origin HEAD
+          REPO="${{ github.repository }}"
+          NEW_URL="https://github.com/${REPO}/archive/refs/tags/${TAG}.tar.gz"
+          SHA256="${{ steps.sha256.outputs.sha256 }}"
+
+          git clone "https://x-access-token:${{ secrets.TAP_TOKEN }}@github.com/victorstein/homebrew-tap.git" tap
+          cd tap
+
+          python3 - <<'PYEOF'
+import re, os, sys
+
+tag    = os.environ["TAG"]
+sha256 = os.environ["SHA256"]
+url    = os.environ["NEW_URL"]
+path   = "Formula/claude-usage-statusline.rb"
+
+with open(path) as f:
+    text = f.read()
+
+text, n_url = re.subn(
+    r'(url\s+)"https://github\.com/[^"]+/archive/refs/tags/[^"]+\.tar\.gz"',
+    rf'\1"{url}"', text
+)
+text, n_sha = re.subn(
+    r'(sha256\s+)"[a-f0-9]{64}"',
+    rf'\1"{sha256}"', text
+)
+
+if n_url == 0:
+    print("::error::No url line found in formula to update.", file=sys.stderr)
+    sys.exit(1)
+if n_sha == 0:
+    print("::error::No sha256 line found in formula to update.", file=sys.stderr)
+    sys.exit(1)
+
+with open(path, "w") as f:
+    f.write(text)
+
+print(f"url    → {url}")
+print(f"sha256 → {sha256}")
+PYEOF
+
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add Formula/claude-usage-statusline.rb
+          git commit -m "chore: update claude-usage-statusline to ${TAG}"
+          git push
+        env:
+          TAG: ${{ steps.version.outputs.tag }}
+          SHA256: ${{ steps.sha256.outputs.sha256 }}
+          NEW_URL: https://github.com/${{ github.repository }}/archive/refs/tags/${{ steps.version.outputs.tag }}.tar.gz
 
       - name: Create GitHub release
         run: |
