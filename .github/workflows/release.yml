@@ -109,7 +109,7 @@ jobs:
           NEW_URL="https://github.com/${REPO}/archive/refs/tags/${TAG}.tar.gz"
           SHA256="${{ steps.sha256.outputs.sha256 }}"
 
-          git clone "https://x-access-token:${{ secrets.TAP_TOKEN }}@github.com/victorstein/homebrew-tap.git" tap
+          git clone "https://x-access-token:${{ secrets.TAP_GITHUB_TOKEN }}@github.com/victorstein/homebrew-tap.git" tap
           cd tap
 
           python3 - <<'PYEOF'
