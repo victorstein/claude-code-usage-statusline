@@ -345,14 +345,15 @@ def background_refresh(cache):
             release_lock()
             os._exit(0)
 
-        usage = fetch_usage(sk, oid)
-        if usage:
-            cache["usage"] = {
-                **usage,
-                "fetched_at": now,
-                "expires_at": now + USAGE_TTL,
-            }
-            save_cache(cache)
+        if is_stale(cache.get("usage")):
+            usage = fetch_usage(sk, oid)
+            if usage:
+                cache["usage"] = {
+                    **usage,
+                    "fetched_at": now,
+                    "expires_at": now + USAGE_TTL,
+                }
+                save_cache(cache)
     except Exception:
         pass
     finally:
@@ -418,14 +419,14 @@ def format_output(session_data, usage):
     if usage:
         five_hour = usage.get("five_hour")
         if five_hour:
-            pct = int(five_hour.get("utilization", 0))
+            pct = round(float(five_hour.get("utilization", 0)) * 100)
             reset = format_reset_time(five_hour.get("resets_at"))
             reset_str = f" {THEME['dim']}{reset}{RESET}" if reset else ""
             parts.append(f"{THEME['label']}5h{RESET} {mini_bar(pct)} {color_for_pct(pct)}{pct}%{RESET}{reset_str}")
 
         seven_day = usage.get("seven_day")
         if seven_day:
-            pct = int(seven_day.get("utilization", 0))
+            pct = round(float(seven_day.get("utilization", 0)) * 100)
             reset = format_reset_time(seven_day.get("resets_at"))
             reset_str = f" {THEME['dim']}{reset}{RESET}" if reset else ""
             parts.append(f"{THEME['label']}7d{RESET} {mini_bar(pct)} {color_for_pct(pct)}{pct}%{RESET}{reset_str}")
