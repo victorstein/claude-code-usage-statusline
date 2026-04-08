@@ -1,0 +1,181 @@
+name: Release
+
+on:
+  workflow_dispatch:
+    inputs:
+      bump:
+        description: "Version bump type"
+        required: true
+        type: choice
+        options: [patch, minor, major]
+
+# GITHUB_TOKEN needs write access to push tags, commits, and create releases.
+# If the repo's default workflow permission is "read", this explicit block
+# overrides it for this workflow only.
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0  # full history needed to read all tags
+
+      - name: Compute new version
+        id: version
+        run: |
+          LAST_TAG=$(git tag --sort=-version:refname | grep -E '^v[0-9]+\.[0-9]+\.[0-9]+$' | head -1)
+          if [ -z "$LAST_TAG" ]; then
+            echo "No previous tags found — this is the first release."
+            CURRENT="0.0.0"
+          else
+            echo "Last tag: $LAST_TAG"
+            CURRENT="${LAST_TAG#v}"
+          fi
+
+          IFS='.' read -r MAJOR MINOR PATCH <<< "$CURRENT"
+          case "${{ inputs.bump }}" in
+            major) MAJOR=$((MAJOR+1)); MINOR=0; PATCH=0 ;;
+            minor) MINOR=$((MINOR+1));             PATCH=0 ;;
+            patch)                                 PATCH=$((PATCH+1)) ;;
+          esac
+
+          NEW_TAG="v${MAJOR}.${MINOR}.${PATCH}"
+          echo "New version: $NEW_TAG"
+          echo "tag=${NEW_TAG}" >> "$GITHUB_OUTPUT"
+
+      - name: Guard — tag must not already exist
+        run: |
+          TAG="${{ steps.version.outputs.tag }}"
+          if git tag -l "$TAG" | grep -q "$TAG"; then
+            echo "::error::Tag $TAG already exists locally. Aborting."
+            exit 1
+          fi
+          if git ls-remote --tags origin "$TAG" | grep -q "$TAG"; then
+            echo "::error::Tag $TAG already exists on remote. Aborting."
+            exit 1
+          fi
+          echo "Tag $TAG is free to use."
+
+      - name: Configure git identity
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+
+      - name: Create and push tag
+        id: push_tag
+        run: |
+          TAG="${{ steps.version.outputs.tag }}"
+          git tag -a "$TAG" -m "Release $TAG"
+          git push origin "$TAG"
+          echo "Pushed tag $TAG"
+
+      - name: Compute SHA256 of release tarball
+        id: sha256
+        run: |
+          TAG="${{ steps.version.outputs.tag }}"
+          REPO="${{ github.repository }}"
+          TARBALL_URL="https://github.com/${REPO}/archive/refs/tags/${TAG}.tar.gz"
+          echo "Fetching: $TARBALL_URL"
+
+          SHA256=""
+          for i in 1 2 3 4 5; do
+            SHA256=$(curl -fsSL "$TARBALL_URL" | sha256sum | awk '{print $1}')
+            # sha256sum of an empty response starts with e3b0c44 — treat as failure
+            if [ -n "$SHA256" ] && [ "${SHA256:0:7}" != "e3b0c44" ]; then
+              echo "SHA256: $SHA256"
+              break
+            fi
+            echo "Attempt $i: tarball not ready, retrying in 10s..."
+            SHA256=""
+            sleep 10
+          done
+
+          if [ -z "$SHA256" ]; then
+            echo "::error::SHA256 fetch failed after 5 attempts. The tarball may not be available yet."
+            exit 1
+          fi
+
+          echo "sha256=${SHA256}" >> "$GITHUB_OUTPUT"
+
+      - name: Update Homebrew formula
+        run: |
+          python3 - <<'PYEOF'
+          import re, os, sys
+
+          tag     = os.environ["NEW_TAG"]
+          sha256  = os.environ["SHA256"]
+          repo    = os.environ["GITHUB_REPOSITORY"]
+          new_url = f"https://github.com/{repo}/archive/refs/tags/{tag}.tar.gz"
+          formula = "HomebrewFormula/claude-usage-statusline.rb"
+
+          with open(formula) as f:
+              content = f.read()
+
+          # State A — first release: commented url/sha256 lines
+          content, n_url_a = re.subn(
+              r'^(\s*)#\s*url\s+"https://github\.com/[^"]+/archive/refs/tags/[^"]+\.tar\.gz"',
+              rf'\1url "{new_url}"',
+              content, flags=re.MULTILINE
+          )
+          content, n_sha_a = re.subn(
+              r'^(\s*)#\s*sha256\s+"[^"]*"',
+              rf'\1sha256 "{sha256}"',
+              content, flags=re.MULTILINE
+          )
+
+          # State B — subsequent releases: active (uncommented) url/sha256 lines
+          content, n_url_b = re.subn(
+              r'^(\s*)url\s+"https://github\.com/[^"]+/archive/refs/tags/[^"]+\.tar\.gz"',
+              rf'\1url "{new_url}"',
+              content, flags=re.MULTILINE
+          )
+          content, n_sha_b = re.subn(
+              r'^(\s*)sha256\s+"[a-f0-9]{64}"',
+              rf'\1sha256 "{sha256}"',
+              content, flags=re.MULTILINE
+          )
+
+          if n_url_a + n_url_b == 0:
+              print("::error::No url line found in formula to update.", file=sys.stderr)
+              sys.exit(1)
+          if n_sha_a + n_sha_b == 0:
+              print("::error::No sha256 line found in formula to update.", file=sys.stderr)
+              sys.exit(1)
+
+          with open(formula, "w") as f:
+              f.write(content)
+
+          print(f"url  → {new_url}")
+          print(f"sha256 → {sha256}")
+          PYEOF
+        env:
+          NEW_TAG: ${{ steps.version.outputs.tag }}
+          SHA256: ${{ steps.sha256.outputs.sha256 }}
+
+      - name: Commit and push formula update
+        run: |
+          TAG="${{ steps.version.outputs.tag }}"
+          git add HomebrewFormula/claude-usage-statusline.rb
+          git commit -m "chore: update Homebrew formula for ${TAG}"
+          git push origin HEAD
+
+      - name: Create GitHub release
+        run: |
+          gh release create "${{ steps.version.outputs.tag }}" \
+            --title "Release ${{ steps.version.outputs.tag }}" \
+            --generate-notes \
+            --verify-tag
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      # If anything after the tag push fails, delete the tag so re-runs work cleanly.
+      - name: Cleanup — delete tag on failure
+        if: failure() && steps.push_tag.outcome == 'success'
+        run: |
+          git push origin --delete "${{ steps.version.outputs.tag }}" || true
+          echo "Tag ${{ steps.version.outputs.tag }} deleted due to workflow failure."
