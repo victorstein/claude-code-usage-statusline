@@ -28,28 +28,15 @@ A [Claude Code](https://docs.anthropic.com/en/docs/claude-code) status line plug
 
 ## Installation
 
-One-liner:
+### Homebrew (recommended)
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/victorstein/claude-code-usage-statusline/main/install.sh | bash
+brew install victorstein/tap/claude-usage-statusline
 ```
 
-Or clone and run locally:
+`post_install` automatically configures `~/.claude/settings.json` — no manual setup needed.
 
-```bash
-git clone https://github.com/victorstein/claude-code-usage-statusline.git
-cd claude-code-usage-statusline
-bash install.sh
-```
-
-The installer:
-1. Downloads the script to `~/.claude/scripts/`
-2. Configures `~/.claude/settings.json` with the status line command
-3. Preserves any existing settings
-
-### Manual Installation
-
-If you prefer to set it up yourself:
+### Manual
 
 ```bash
 mkdir -p ~/.claude/scripts
@@ -154,6 +141,14 @@ rm -rf ~/.cache/claude-usage/
 
 ## Uninstall
 
+**Homebrew:**
+```bash
+brew uninstall claude-usage-statusline
+rm -rf ~/.cache/claude-usage/
+# Remove the "statusLine" key from ~/.claude/settings.json
+```
+
+**Manual:**
 ```bash
 rm ~/.claude/scripts/claude-usage-statusline.py
 rm -rf ~/.cache/claude-usage/
