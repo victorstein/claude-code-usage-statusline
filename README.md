@@ -15,16 +15,12 @@ A [Claude Code](https://docs.anthropic.com/en/docs/claude-code) status line plug
 - **Context window** — current context window usage from Claude Code
 - **Color-coded bars** — green → yellow → orange → red as usage increases
 - **Zero dependencies** — pure Python stdlib, no `pip install` needed
-- **Non-blocking** — background refresh via `os.fork()`, status line renders in ~40ms
-- **Auto-authentication** — extracts session tokens from Chrome cookies automatically
 - **Multiple themes** — Catppuccin Mocha/Latte, Tokyo Night, Gruvbox, or plain ANSI
 
 ## Requirements
 
-- **macOS** (Chrome cookie extraction uses Keychain + SQLite)
-- **Google Chrome** with an active [claude.ai](https://claude.ai) session
 - **Python 3.8+**
-- **Claude Code** v2.1+
+- **Claude Code** v2.1+ (provides rate limit data via stdin)
 
 ## Installation
 
@@ -58,10 +54,8 @@ Then add to `~/.claude/settings.json`:
 
 ## Usage
 
-1. Make sure you're logged into [claude.ai](https://claude.ai) in Chrome
-2. Start (or restart) a Claude Code session
-3. Send a message — the status line appears at the bottom after the first response
-4. On the very first run, cookies are extracted in the background. Usage data appears after the second response.
+1. Start (or restart) a Claude Code session
+2. Send a message — the status line appears at the bottom after the first response
 
 ### What the numbers mean
 
@@ -99,59 +93,26 @@ Available themes:
 
 ## How It Works
 
-1. **Claude Code** runs the script after each assistant response, piping session data (model, context window %) as JSON to stdin
-2. The script reads a **cache file** (`~/.cache/claude-usage/cache.json`) for usage data
-3. If the cache is stale, it **forks a background child process** to refresh data — the parent returns immediately with cached values
-4. The background process:
-   - Extracts `sessionKey` and `orgId` from Chrome's encrypted cookie database (via macOS Keychain + AES-128-CBC decryption)
-   - Calls `https://claude.ai/api/organizations/{orgId}/usage`
-   - Writes results to the cache file atomically
-
-### Cache TTLs
-
-| Data | TTL | Reason |
-|------|-----|--------|
-| Chrome cookies | 30 min | Expensive extraction (Keychain + SQLite + AES) |
-| Usage API response | 60 sec | Keep data fresh without rate limiting |
-
-### Security
-
-- Session tokens are cached locally at `~/.cache/claude-usage/cache.json` with standard user file permissions
-- No data is sent anywhere except to `claude.ai`'s own API
-- The Chrome Keychain password prompt may appear on first run (macOS will ask to allow access)
+**Claude Code** runs the script after each assistant response, piping session data as JSON to stdin. The script reads the JSON and renders the status line immediately — no network calls, no background processes, no cache.
 
 ## Troubleshooting
 
-**Status line is empty / no usage data:**
-- Make sure you're logged into claude.ai in Chrome
-- Check if the cache was created: `cat ~/.cache/claude-usage/cache.json`
-- Try running manually: `echo '{"model":{"display_name":"Opus"},"context_window":{"used_percentage":25}}' | python3 ~/.claude/scripts/claude-usage-statusline.py`
-
-**Getting `?` for usage:**
-- The API might be rate-limiting. Wait 60 seconds and send another message.
-- Check if your Chrome session is still valid by visiting claude.ai
-
-**Keychain prompt keeps appearing:**
-- Click "Always Allow" when macOS asks about Chrome Safe Storage access
-
-**Want to clear the cache:**
-```bash
-rm -rf ~/.cache/claude-usage/
-```
+**Status line shows no usage data (missing 5h/7d):**
+- Rate limit data is only included after the first assistant response in a session
+- Make sure you're running Claude Code v2.1+
+- Try running manually: `echo '{"model":{"display_name":"Opus"},"context_window":{"used_percentage":25},"rate_limits":{"five_hour":{"used_percentage":10,"resets_at":1744560000},"seven_day":{"used_percentage":5,"resets_at":1744560000}}}' | claude-usage-statusline`
 
 ## Uninstall
 
 **Homebrew:**
 ```bash
 brew uninstall claude-usage-statusline
-rm -rf ~/.cache/claude-usage/
 # Remove the "statusLine" key from ~/.claude/settings.json
 ```
 
 **Manual:**
 ```bash
 rm ~/.claude/scripts/claude-usage-statusline.py
-rm -rf ~/.cache/claude-usage/
 # Remove the "statusLine" key from ~/.claude/settings.json
 ```
 

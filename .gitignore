@@ -1,3 +1,11 @@
 __pycache__/
 *.pyc
 .DS_Store
+.todos/
+.sidecar/
+.sidecar-agent
+.sidecar-task
+.sidecar-pr
+.sidecar-start.sh
+.sidecar-base
+.td-root
