@@ -62,9 +62,8 @@ Detected bump: minor  →  v1.0.0 → v1.1.0
 The GitHub Action will:
   1. Create and push tag v1.1.0
   2. Compute SHA256 of the release tarball
-  3. Update HomebrewFormula/claude-usage-statusline.rb
-  4. Commit and push the formula update to main
-  5. Create GitHub release v1.1.0 with auto-generated notes
+  3. Update Formula/claude-usage-statusline.rb in victorstein/homebrew-tap
+  4. Create GitHub release v1.1.0 with auto-generated notes
 
 Proceed? [Y/n]  (or type patch / minor / major to override)
 ```
@@ -114,3 +113,23 @@ gh release view <new_tag> -R victorstein/claude-code-usage-statusline --json url
 On failure, print: "Workflow failed. See run at: <run_url>"
 
 If the run ID can't be found after 5 attempts, fall back: "Check your runs at: https://github.com/victorstein/claude-code-usage-statusline/actions"
+
+---
+
+## Known issues & gotchas
+
+### Workflow must be on `main` before dispatching
+`workflow_dispatch` only works if the workflow file exists on the repo's **default branch**. If `release.yml` hasn't been merged to `main` yet, dispatch fails with:
+> `HTTP 404: workflow release.yml not found on the default branch`
+
+Fix: merge/push the branch to `main` first, then dispatch.
+
+### YAML heredoc indentation causes silent parse failure
+Python code inside a `run: |` block must be indented to match the block's indentation level. YAML strips the common indentation before handing the script to bash, so Python receives correctly unindented code. If any line is at column 0 (less than the block indent), YAML parse fails silently — the symptom is:
+- Push-triggered runs appearing in the Actions tab that fail instantly at 0s with "workflow file issue"
+- `workflow_dispatch` refusing with `"Workflow does not have 'workflow_dispatch' trigger"` even though the YAML clearly has it
+
+Fix: indent all heredoc content lines (including the terminator) to the same level as the surrounding `run:` block.
+
+### TAP_GITHUB_TOKEN secret required for Homebrew formula updates
+The release workflow pushes formula changes to `victorstein/homebrew-tap`. `GITHUB_TOKEN` only has access to the current repo, so a separate PAT is needed. It must be added as `TAP_GITHUB_TOKEN` in repo secrets. It's a fine-grained token scoped to `homebrew-tap` only with **Contents: Read and write**. The same token value is shared with `victorstein/tawtui` (added separately to each repo's secrets).
